@@ -78,6 +78,7 @@ func Resolve(tpl integration.Config, svc listeners.Service) (integration.Config,
 
 	// Ignore the config from file if it's overridden by an empty config
 	// or by a different config for the same check
+	log.Infof("name: %s, provider: %s, checkNames: %s, svc: %+v, tpl: %+v", tpl.Name, tpl.Provider, svc.GetCheckNames(ctx), svc, tpl)
 	if tpl.Provider == names.File && svc.GetCheckNames(ctx) != nil {
 		checkNames := svc.GetCheckNames(ctx)
 		lenCheckNames := len(checkNames)
