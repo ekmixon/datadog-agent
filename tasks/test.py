@@ -484,7 +484,7 @@ def integration_tests(ctx, install_deps=False, race=False, remote_docker=False):
 
 
 @task
-def e2e_tests(ctx, target="gitlab", agent_image="", dca_image=""):
+def e2e_tests(ctx, target="gitlab", agent_image="", dca_image="", argo_workflow=""):
     """
     Run e2e tests in several environments.
     """
@@ -502,6 +502,9 @@ def e2e_tests(ctx, target="gitlab", agent_image="", dca_image=""):
             print("define DATADOG_CLUSTER_AGENT_IMAGE envvar or image flag")
             raise Exit(1)
         os.environ["DATADOG_CLUSTER_AGENT_IMAGE"] = dca_image
+    if not os.getenv("ARGO_WORKFLOW"):
+        if argo_workflow:
+            os.environ["ARGO_WORKFLOW"] = argo_workflow
 
     ctx.run("./test/e2e/scripts/setup-instance/00-entrypoint-%s.sh" % target)
 

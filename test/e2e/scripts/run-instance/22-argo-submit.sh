@@ -21,13 +21,27 @@ if [[ -n ${DOCKER_REGISTRY_URL+x} ]] && [[ -n ${DOCKER_REGISTRY_LOGIN+x} ]] && [
     eval "$oldstate"
 fi
 
-# TODO run all workflows ?
+case "$ARGO_WORKFLOW" in
+    "cws")
+        ./argo template create -v ../../argo-workflows/templates/*.yaml
+        ./argo submit -v ../../argo-workflows/cws-workflow.yaml --wait \
+            --parameter datadog-agent-image-repository="${DATADOG_AGENT_IMAGE%:*}" \
+            --parameter datadog-agent-image-tag="${DATADOG_AGENT_IMAGE#*:}" \
+            --parameter datadog-cluster-agent-image-repository="${DATADOG_CLUSTER_AGENT_IMAGE%:*}" \
+            --parameter datadog-cluster-agent-image-tag="${DATADOG_CLUSTER_AGENT_IMAGE#*:}" \
+            --parameter datadog-agent-site="${DATADOG_AGENT_SITE#*:}" \
+            --parameter datadog-agent-api-key="${DATADOG_AGENT_API_KEY#*:}" \
+            --parameter datadog-agent-app-key="${DATADOG_AGENT_APP_KEY#*:}" || :
+        ;;
+    *)
+        ./argo template create ../../argo-workflows/templates/*.yaml
+        ./argo submit ../../argo-workflows/workflow.yaml --wait \
+            --parameter datadog-agent-image-repository="${DATADOG_AGENT_IMAGE%:*}" \
+            --parameter datadog-agent-image-tag="${DATADOG_AGENT_IMAGE#*:}" \
+            --parameter datadog-cluster-agent-image-repository="${DATADOG_CLUSTER_AGENT_IMAGE%:*}" \
+            --parameter datadog-cluster-agent-image-tag="${DATADOG_CLUSTER_AGENT_IMAGE#*:}" || :
+        ;;
+esac
 
-./argo template create ../../argo-workflows/templates/*.yaml
-./argo submit ../../argo-workflows/workflow.yaml --wait \
-       --parameter datadog-agent-image-repository="${DATADOG_AGENT_IMAGE%:*}" \
-       --parameter datadog-agent-image-tag="${DATADOG_AGENT_IMAGE#*:}" \
-       --parameter datadog-cluster-agent-image-repository="${DATADOG_CLUSTER_AGENT_IMAGE%:*}" \
-       --parameter datadog-cluster-agent-image-tag="${DATADOG_CLUSTER_AGENT_IMAGE#*:}" || :
 # we are waiting for the end of the workflow but we don't care about its return code
 exit 0
