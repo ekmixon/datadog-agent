@@ -26,10 +26,7 @@ PROFILE_COV = "profile.cov"
 
 
 def ensure_bytes(s):
-    if not isinstance(s, bytes):
-        return s.encode('utf-8')
-
-    return s
+    return s if isinstance(s, bytes) else s.encode('utf-8')
 
 
 @contextmanager
@@ -79,7 +76,7 @@ def install_tools(ctx):
         for path, tools in TOOLS.items():
             with ctx.cd(path):
                 for tool in tools:
-                    ctx.run("go install {}".format(tool))
+                    ctx.run(f"go install {tool}")
 
 
 @task()

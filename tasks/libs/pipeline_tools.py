@@ -20,16 +20,19 @@ def get_running_pipelines_on_same_ref(gitlab, ref, sha=None):
     pipelines = gitlab.all_pipelines_for_ref(ref, sha=sha)
 
     RUNNING_STATUSES = ["created", "pending", "running"]
-    running_pipelines = [pipeline for pipeline in pipelines if pipeline["status"] in RUNNING_STATUSES]
-
-    return running_pipelines
+    return [
+        pipeline
+        for pipeline in pipelines
+        if pipeline["status"] in RUNNING_STATUSES
+    ]
 
 
 def parse_datetime(dt):
     # before python 3.7, the Z shorthand for UTC timezone was not accepted
-    if sys.version_info.major < 3 or sys.version_info.minor < 7:
-        if dt.endswith("Z"):
-            dt = dt[:-1] + "+00:00"
+    if (
+        sys.version_info.major < 3 or sys.version_info.minor < 7
+    ) and dt.endswith("Z"):
+        dt = f"{dt[:-1]}+00:00"
     return datetime.datetime.strptime(dt, "%Y-%m-%dT%H:%M:%S.%f%z")
 
 
@@ -41,9 +44,11 @@ def cancel_pipelines_with_confirmation(gitlab, pipelines):
             color_message("Pipeline", "blue"),
             color_message(pipeline['id'], "bold"),
             color_message(
-                "(https://gitlab.ddbuild.io/{}/pipelines/{})".format(gitlab.project_name, pipeline['id']), "green"
+                f"(https://gitlab.ddbuild.io/{gitlab.project_name}/pipelines/{pipeline['id']})",
+                "green",
             ),
         )
+
 
         pipeline_creation_date = pipeline['created_at']
         print(
@@ -57,16 +62,22 @@ def cancel_pipelines_with_confirmation(gitlab, pipelines):
         print(
             color_message("Commit:", "blue"),
             color_message(commit_title, "green"),
-            color_message("({})".format(commit_short_sha), "grey"),
+            color_message(f"({commit_short_sha})", "grey"),
             color_message("by", "blue"),
             color_message(commit_author, "bold"),
         )
 
+
         if yes_no_question("Do you want to cancel this pipeline?", color="orange", default=True):
             gitlab.cancel_pipeline(pipeline['id'])
-            print("Pipeline {} has been cancelled.\n".format(color_message(pipeline['id'], "bold")))
+            print(
+                f"""Pipeline {color_message(pipeline['id'], "bold")} has been cancelled.\n"""
+            )
+
         else:
-            print("Pipeline {} will keep running.\n".format(color_message(pipeline['id'], "bold")))
+            print(
+                f"""Pipeline {color_message(pipeline['id'], "bold")} will keep running.\n"""
+            )
 
 
 def trigger_agent_pipeline(
@@ -99,11 +110,7 @@ def trigger_agent_pipeline(
 
     # Kitchen tests can be selectively enabled, or disabled on pipelines where they're
     # enabled by default (default branch and deploy pipelines).
-    if kitchen_tests:
-        args["RUN_KITCHEN_TESTS"] = "true"
-    else:
-        args["RUN_KITCHEN_TESTS"] = "false"
-
+    args["RUN_KITCHEN_TESTS"] = "true" if kitchen_tests else "false"
     if release_version_6 is not None:
         args["RELEASE_VERSION_6"] = release_version_6
 
@@ -115,18 +122,20 @@ def trigger_agent_pipeline(
 
     print(
         "Creating pipeline for datadog-agent on branch/tag {} with args:\n{}".format(
-            ref, "\n".join(["  - {}: {}".format(k, args[k]) for k in args])
+            ref, "\n".join([f"  - {k}: {args[k]}" for k in args])
         )
     )
+
     result = gitlab.create_pipeline(ref, args)
 
-    if result and "id" in result:
-        return result["id"]
+    if result:
+        if "id" in result:
+            return result["id"]
 
-    if result and "filtered out by workflow rules" in result.get("message", {}).get("base", [""])[0]:
-        raise FilteredOutException
+        if "filtered out by workflow rules" in result.get("message", {}).get("base", [""])[0]:
+            raise FilteredOutException
 
-    raise RuntimeError("Invalid response from Gitlab: {}".format(result))
+    raise RuntimeError(f"Invalid response from Gitlab: {result}")
 
 
 def wait_for_pipeline(gitlab, pipeline_id, pipeline_finish_timeout_sec=PIPELINE_FINISH_TIMEOUT_SEC):
@@ -138,23 +147,32 @@ def wait_for_pipeline(gitlab, pipeline_id, pipeline_finish_timeout_sec=PIPELINE_
 
     print(
         color_message(
-            "Commit: "
-            + color_message(commit_title, "green")
-            + color_message(" ({})".format(commit_short_sha), "grey")
-            + " by "
+            (
+                (
+                    "Commit: "
+                    + color_message(commit_title, "green")
+                    + color_message(f" ({commit_short_sha})", "grey")
+                )
+                + " by "
+            )
             + color_message(commit_author, "bold"),
             "blue",
         )
     )
+
     print(
         color_message(
-            "Pipeline Link: "
-            + color_message(
-                "https://gitlab.ddbuild.io/{}/pipelines/{}".format(gitlab.project_name, pipeline_id), "green"
+            (
+                "Pipeline Link: "
+                + color_message(
+                    f"https://gitlab.ddbuild.io/{gitlab.project_name}/pipelines/{pipeline_id}",
+                    "green",
+                )
             ),
             "blue",
         )
     )
+
 
     print(color_message("Waiting for pipeline to finish. Exiting won't cancel it.", "blue"))
 
@@ -177,7 +195,7 @@ def loop_status(callable, timeout_sec):
     Utility to loop a function that takes a status and returns [done, status], until done is True.
     """
     start = time()
-    status = dict()
+    status = {}
     while True:
         done, status = callable(status)
         if done:
@@ -203,41 +221,38 @@ def pipeline_status(gitlab, pipeline_id, job_status):
     if pipestatus == "success":
         print(
             color_message(
-                "Pipeline https://gitlab.ddbuild.io/{}/pipelines/{} for {} succeeded".format(
-                    gitlab.project_name, pipeline_id, ref
-                ),
+                f"Pipeline https://gitlab.ddbuild.io/{gitlab.project_name}/pipelines/{pipeline_id} for {ref} succeeded",
                 "green",
             )
         )
-        notify("Pipeline success", "Pipeline {} for {} succeeded.".format(pipeline_id, ref))
+
+        notify("Pipeline success", f"Pipeline {pipeline_id} for {ref} succeeded.")
         return True, job_status
 
     if pipestatus == "failed":
         print(
             color_message(
-                "Pipeline https://gitlab.ddbuild.io/{}/pipelines/{} for {} failed".format(
-                    gitlab.project_name, pipeline_id, ref
-                ),
+                f"Pipeline https://gitlab.ddbuild.io/{gitlab.project_name}/pipelines/{pipeline_id} for {ref} failed",
                 "red",
             )
         )
-        notify("Pipeline failure", "Pipeline {} for {} failed.".format(pipeline_id, ref))
+
+        notify("Pipeline failure", f"Pipeline {pipeline_id} for {ref} failed.")
         return True, job_status
 
     if pipestatus == "canceled":
         print(
             color_message(
-                "Pipeline https://gitlab.ddbuild.io/{}/pipelines/{} for {} was canceled".format(
-                    gitlab.project_name, pipeline_id, ref
-                ),
+                f"Pipeline https://gitlab.ddbuild.io/{gitlab.project_name}/pipelines/{pipeline_id} for {ref} was canceled",
                 "grey",
             )
         )
-        notify("Pipeline canceled", "Pipeline {} for {} was canceled.".format(pipeline_id, ref))
+
+        notify("Pipeline canceled", f"Pipeline {pipeline_id} for {ref} was canceled.")
         return True, job_status
 
     if pipestatus not in ["created", "running", "pending"]:
-        raise ErrorMsg("Error: pipeline status {}".format(pipestatus.title()))
+        raise ErrorMsg(f"Error: pipeline status {pipestatus.title()}")
 
     return False, job_status
 
@@ -263,7 +278,7 @@ def update_job_status(jobs, job_status):
             if job['id'] != old_job['id'] and job['created_at'] > old_job['created_at']:
                 job_status[job['name']] = job
                 # Check if old job already in notification list, to append retry message
-                notify_old_job = notify.get(old_job['id'], None)
+                notify_old_job = notify.get(old_job['id'])
                 if notify_old_job is not None:
                     notify_old_job['retried_old'] = True  # Add message to say the job got retried
                     notify_old_job['retried_created_at'] = job['created_at']
@@ -373,8 +388,6 @@ def notify(title, info_text, sound=True):
 
         except Exception:
             print("Could not send MacOS notification. Run 'pip install pyobjc' to get notifications.")
-            pass
-
     elif platform.system() == "Windows":
         try:
             from win10toast import ToastNotifier
@@ -383,7 +396,6 @@ def notify(title, info_text, sound=True):
             toaster.show_toast(title, info_text, icon_path=None, duration=10)
         except Exception:
             print("Could not send Windows notification. Run 'pip install win10toast' to get notifications.")
-            pass
 
 
 class ErrorMsg(Exception):

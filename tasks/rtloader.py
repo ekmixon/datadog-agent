@@ -24,7 +24,7 @@ def get_dev_path():
 
 
 def run_make_command(ctx, command=""):
-    ctx.run("make -C {} {}".format(get_rtloader_build_path(), command))
+    ctx.run(f"make -C {get_rtloader_build_path()} {command}")
 
 
 def get_cmake_cache_path(rtloader_path):
@@ -43,9 +43,9 @@ def clear_cmake_cache(rtloader_path, settings):
 
     settings_not_found = settings.copy()
     with open(cmake_cache) as cache:
-        for line in cache.readlines():
+        for line in cache:
             for key, value in settings.items():
-                if line.strip() == key + "=" + value:
+                if line.strip() == f"{key}={value}":
                     settings_not_found.pop(key)
 
     if settings_not_found:
@@ -80,7 +80,7 @@ def make(ctx, install_prefix=None, python_runtimes='3', cmake_options='', arch="
     clear_cmake_cache(rtloader_build_path, settings)
 
     for option, value in settings.items():
-        cmake_args += " -D{}={} ".format(option, value)
+        cmake_args += f" -D{option}={value} "
 
     if arch == "x86":
         cmake_args += " -DARCH_I386=ON"
@@ -89,12 +89,13 @@ def make(ctx, install_prefix=None, python_runtimes='3', cmake_options='', arch="
     try:
         os.makedirs(rtloader_build_path)
     except OSError as e:
-        if e.errno == errno.EEXIST:
-            pass
-        else:
+        if e.errno != errno.EEXIST:
             raise
 
-    ctx.run("cd {} && cmake {} {}".format(rtloader_build_path, cmake_args, get_rtloader_path()))
+    ctx.run(
+        f"cd {rtloader_build_path} && cmake {cmake_args} {get_rtloader_path()}"
+    )
+
     run_make_command(ctx)
 
 
@@ -112,9 +113,9 @@ def clean(_):
     for p in [include_path, lib_path, rtloader_build_path]:
         try:
             shutil.rmtree(p)
-            print("Successfully cleaned '{}'".format(p))
+            print(f"Successfully cleaned '{p}'")
         except FileNotFoundError:
-            print("Nothing to clean up '{}'".format(p))
+            print(f"Nothing to clean up '{p}'")
 
 
 @task
@@ -124,7 +125,7 @@ def install(ctx):
 
 @task
 def test(ctx):
-    ctx.run("make -C {}/test run".format(get_rtloader_build_path()))
+    ctx.run(f"make -C {get_rtloader_build_path()}/test run")
 
 
 @task
@@ -132,11 +133,16 @@ def format(ctx, raise_if_changed=False):
     run_make_command(ctx, "clang-format")
 
     if raise_if_changed:
-        changed_files = [line for line in ctx.run("git ls-files -m rtloader").stdout.strip().split("\n") if line]
-        if len(changed_files) != 0:
+        if changed_files := [
+            line
+            for line in ctx.run("git ls-files -m rtloader")
+            .stdout.strip()
+            .split("\n")
+            if line
+        ]:
             print("Following files were not correctly formated:")
             for f in changed_files:
-                print("  - {}".format(f))
+                print(f"  - {f}")
             raise Exit(code=1)
 
 
@@ -190,5 +196,5 @@ def generate_doc(ctx):
         print("The full list is available in {}/doxygen/errors.log.".format(rtloader_path))
 
     # Exit with non-zero code if an error has been found
-    if len(errors) > 0:
+    if errors:
         raise Exit(code=1)

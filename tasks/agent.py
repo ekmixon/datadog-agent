@@ -173,9 +173,11 @@ def build(
     # Generating go source from templates by running go generate on ./pkg/status
     generate(ctx)
 
-    cmd = "go build -mod={go_mod} {race_opt} {build_type} -tags \"{go_build_tags}\" "
+    cmd = (
+        "go build -mod={go_mod} {race_opt} {build_type} -tags \"{go_build_tags}\" "
+        + "-o {agent_bin} -gcflags=\"{gcflags}\" -ldflags=\"{ldflags}\" {REPO_PATH}/cmd/{flavor}"
+    )
 
-    cmd += "-o {agent_bin} -gcflags=\"{gcflags}\" -ldflags=\"{ldflags}\" {REPO_PATH}/cmd/{flavor}"
     args = {
         "go_mod": go_mod,
         "race_opt": "-race" if race else "",
@@ -238,9 +240,9 @@ def refresh_assets(_, build_tags, development=True, iot=False, windows_sysprobe=
         shutil.copy("./cmd/agent/dist/system-probe.yaml", os.path.join(dist_folder, "system-probe.yaml"))
     shutil.copy("./cmd/agent/dist/datadog.yaml", os.path.join(dist_folder, "datadog.yaml"))
 
-    for check in AGENT_CORECHECKS if not iot else IOT_AGENT_CORECHECKS:
-        check_dir = os.path.join(dist_folder, "conf.d/{}.d/".format(check))
-        copy_tree("./cmd/agent/dist/conf.d/{}.d/".format(check), check_dir)
+    for check in IOT_AGENT_CORECHECKS if iot else AGENT_CORECHECKS:
+        check_dir = os.path.join(dist_folder, f"conf.d/{check}.d/")
+        copy_tree(f"./cmd/agent/dist/conf.d/{check}.d/", check_dir)
     if "apm" in build_tags:
         shutil.copy("./cmd/agent/dist/conf.d/apm.yaml.default", os.path.join(dist_folder, "conf.d/apm.yaml.default"))
     if "process" in build_tags:
@@ -289,29 +291,32 @@ def image_build(ctx, arch='amd64', base_dir="omnibus", python_version="2", skip_
     build_context = "Dockerfiles/agent"
     base_dir = base_dir or os.environ.get("OMNIBUS_BASE_DIR")
     pkg_dir = os.path.join(base_dir, 'pkg')
-    deb_glob = 'datadog-agent*_{}.deb'.format(arch)
-    dockerfile_path = "{}/{}/Dockerfile".format(build_context, arch)
+    deb_glob = f'datadog-agent*_{arch}.deb'
+    dockerfile_path = f"{build_context}/{arch}/Dockerfile"
     list_of_files = glob.glob(os.path.join(pkg_dir, deb_glob))
     # get the last debian package built
     if not list_of_files:
-        print("No debian package build found in {}".format(pkg_dir))
+        print(f"No debian package build found in {pkg_dir}")
         print("See agent.omnibus-build")
         raise Exit(code=1)
     latest_file = max(list_of_files, key=os.path.getctime)
     shutil.copy2(latest_file, build_context)
     # Pull base image with content trust enabled
     pull_base_images(ctx, dockerfile_path, signed_pull)
-    common_build_opts = "-t {} -f {}".format(AGENT_TAG, dockerfile_path)
+    common_build_opts = f"-t {AGENT_TAG} -f {dockerfile_path}"
     if python_version not in BOTH_VERSIONS:
-        common_build_opts = "{} --build-arg PYTHON_VERSION={}".format(common_build_opts, python_version)
+        common_build_opts = (
+            f"{common_build_opts} --build-arg PYTHON_VERSION={python_version}"
+        )
+
 
     # Build with the testing target
     if not skip_tests:
-        ctx.run("docker build {} --target testing {}".format(common_build_opts, build_context))
+        ctx.run(f"docker build {common_build_opts} --target testing {build_context}")
 
     # Build with the release target
-    ctx.run("docker build {} --target release {}".format(common_build_opts, build_context))
-    ctx.run("rm {}/{}".format(build_context, deb_glob))
+    ctx.run(f"docker build {common_build_opts} --target release {build_context}")
+    ctx.run(f"rm {build_context}/{deb_glob}")
 
 
 @task
@@ -334,7 +339,10 @@ def integration_tests(ctx, install_deps=False, race=False, remote_docker=False, 
     # thinks that the parameters are for it to interpret.
     # we're calling an intermediate script which only pass the binary name to the invoke task.
     if remote_docker:
-        test_args["exec_opts"] = "-exec \"{}/test/integration/dockerize_tests.sh\"".format(os.getcwd())
+        test_args[
+            "exec_opts"
+        ] = f'-exec \"{os.getcwd()}/test/integration/dockerize_tests.sh\"'
+
 
     go_cmd = 'go test -mod={go_mod} {race_opt} -tags "{go_build_tags}" {exec_opts}'.format(**test_args)
 
@@ -346,7 +354,7 @@ def integration_tests(ctx, install_deps=False, race=False, remote_docker=False, 
     ]
 
     for prefix in prefixes:
-        ctx.run("{} {}".format(go_cmd, prefix))
+        ctx.run(f"{go_cmd} {prefix}")
 
 
 def get_omnibus_env(
@@ -369,9 +377,9 @@ def get_omnibus_env(
     if go_mod_cache:
         env['OMNIBUS_GOMODCACHE'] = go_mod_cache
 
-    integrations_core_version = os.environ.get('INTEGRATIONS_CORE_VERSION')
-    # Only overrides the env var if the value is a non-empty string.
-    if integrations_core_version:
+    if integrations_core_version := os.environ.get(
+        'INTEGRATIONS_CORE_VERSION'
+    ):
         env['INTEGRATIONS_CORE_VERSION'] = integrations_core_version
 
     if sys.platform == 'win32' and os.environ.get('SIGN_WINDOWS'):
@@ -405,23 +413,16 @@ def get_omnibus_env(
 
 def omnibus_run_task(ctx, task, target_project, base_dir, env, omnibus_s3_cache=False, log_level="info"):
     with ctx.cd("omnibus"):
-        overrides_cmd = ""
-        if base_dir:
-            overrides_cmd = "--override=base_dir:{}".format(base_dir)
-
+        overrides_cmd = f"--override=base_dir:{base_dir}" if base_dir else ""
         omnibus = "bundle exec omnibus"
-        if sys.platform == 'win32':
-            omnibus = "bundle exec omnibus.bat"
-        elif sys.platform == 'darwin':
+        if sys.platform == 'darwin':
             # HACK: This is an ugly hack to fix another hack made by python3 on MacOS
             # The full explanation is available on this PR: https://github.com/DataDog/datadog-agent/pull/5010.
             omnibus = "unset __PYVENV_LAUNCHER__ && bundle exec omnibus"
 
-        if omnibus_s3_cache:
-            populate_s3_cache = "--populate-s3-cache"
-        else:
-            populate_s3_cache = ""
-
+        elif sys.platform == 'win32':
+            omnibus = "bundle exec omnibus.bat"
+        populate_s3_cache = "--populate-s3-cache" if omnibus_s3_cache else ""
         cmd = "{omnibus} {task} {project_name} --log-level={log_level} {populate_s3_cache} {overrides}"
         args = {
             "omnibus": omnibus,
@@ -445,7 +446,7 @@ def bundle_install_omnibus(ctx, gem_path=None, env=None):
 
         cmd = "bundle install"
         if gem_path:
-            cmd += " --path {}".format(gem_path)
+            cmd += f" --path {gem_path}"
         ctx.run(cmd, env=env)
 
 
@@ -532,9 +533,9 @@ def omnibus_build(
 
     print("Build component timing:")
     if not skip_deps:
-        print("Deps:    {}".format(deps_elapsed))
-    print("Bundle:  {}".format(bundle_elapsed))
-    print("Omnibus: {}".format(omnibus_elapsed))
+        print(f"Deps:    {deps_elapsed}")
+    print(f"Bundle:  {bundle_elapsed}")
+    print(f"Omnibus: {omnibus_elapsed}")
 
 
 @task
@@ -546,12 +547,12 @@ def build_dep_tree(ctx, git_ref=""):
     """
     saved_branch = None
     if git_ref:
-        print("Tag {} specified. Checking out the branch...".format(git_ref))
+        print(f"Tag {git_ref} specified. Checking out the branch...")
 
         result = ctx.run("git rev-parse --abbrev-ref HEAD", hide='stdout')
         saved_branch = result.stdout
 
-        ctx.run("git checkout {}".format(git_ref))
+        ctx.run(f"git checkout {git_ref}")
     else:
         print("No tag specified. Using the current state of repository.")
 
@@ -559,7 +560,7 @@ def build_dep_tree(ctx, git_ref=""):
         ctx.run("go run tools/dep_tree_resolver/go_deps.go")
     finally:
         if saved_branch:
-            ctx.run("git checkout {}".format(saved_branch), hide='stdout')
+            ctx.run(f"git checkout {saved_branch}", hide='stdout')
 
 
 @task
@@ -604,9 +605,9 @@ def omnibus_manifest(
 
     task = "manifest"
     if platform is not None:
-        task += " --platform-family={} --platform={} ".format(platform, platform)
+        task += f" --platform-family={platform} --platform={platform} "
     if arch is not None:
-        task += " --architecture={} ".format(arch)
+        task += f" --architecture={arch} "
 
     omnibus_run_task(
         ctx=ctx,
@@ -630,7 +631,7 @@ def check_supports_python_version(_, filename, python):
     with open(filename, 'r') as f:
         tree = ast.parse(f.read(), filename=filename)
 
-    prefix = 'Programming Language :: Python :: {}'.format(python)
+    prefix = f'Programming Language :: Python :: {python}'
     for node in ast.walk(tree):
         if isinstance(node, ast.keyword) and node.arg == "classifiers":
             classifiers = ast.literal_eval(node.value)
@@ -708,7 +709,11 @@ def get_integrations_from_cache(ctx, python, bucket, branch, integrations_dir, t
     for integration in integrations.strip().split(","):
         integration_path = os.path.join(integrations_dir, integration)
         if not os.path.exists(integration_path):
-            raise Exit("Integration {} given, but doesn't exist in {}".format(integration, integrations_dir), code=2)
+            raise Exit(
+                f"Integration {integration} given, but doesn't exist in {integrations_dir}",
+                code=2,
+            )
+
         last_commit = ctx.run(
             LAST_DIRECTORY_COMMIT_PATTERN.format(integrations_dir=integrations_dir, integration=integration),
             hide="both",
@@ -716,7 +721,10 @@ def get_integrations_from_cache(ctx, python, bucket, branch, integrations_dir, t
         )
         integrations_hashes[integration] = last_commit.stdout.strip()
 
-    print("Trying to retrieve {} integration wheels from cache".format(len(integrations_hashes)))
+    print(
+        f"Trying to retrieve {len(integrations_hashes)} integration wheels from cache"
+    )
+
     # On windows, maximum length of a command line call is 8191 characters, therefore
     # we do multiple syncs that fit within that limit (we use 8100 as a nice round number
     # and just to make sure we don't do any of-by-one errors that would break this).
@@ -724,17 +732,12 @@ def get_integrations_from_cache(ctx, python, bucket, branch, integrations_dir, t
     # executable in quotes; also we have to not put the * in quotes, as there's no
     # expansion on it, unlike on Linux
     exclude_wildcard = "*" if platform.system().lower() == "windows" else "'*'"
-    sync_command_prefix = "\"{}\" s3 sync s3://{} {} --no-sign-request --exclude {}".format(
-        awscli, bucket, target_dir, exclude_wildcard
-    )
+    sync_command_prefix = f'\"{awscli}\" s3 sync s3://{bucket} {target_dir} --no-sign-request --exclude {exclude_wildcard}'
+
     sync_commands = [[[sync_command_prefix], len(sync_command_prefix)]]
     for integration, hash in integrations_hashes.items():
-        include_arg = " --include " + CACHED_WHEEL_FULL_PATH_PATTERN.format(
-            hash=hash,
-            integration=integration,
-            python_version=python,
-            branch=branch,
-        )
+        include_arg = f" --include {CACHED_WHEEL_FULL_PATH_PATTERN.format(hash=hash, integration=integration, python_version=python, branch=branch)}"
+
         if len(include_arg) + sync_commands[-1][1] > 8100:
             sync_commands.append([[sync_command_prefix], len(sync_command_prefix)])
         sync_commands[-1][0].append(include_arg)
@@ -761,16 +764,15 @@ def get_integrations_from_cache(ctx, python, bucket, branch, integrations_dir, t
             continue
         elif len(files_matched) > 1:
             raise Exit(
-                "More than 1 wheel for integration {} matched by {}: {}".format(
-                    integration, original_path_glob, files_matched
-                )
+                f"More than 1 wheel for integration {integration} matched by {original_path_glob}: {files_matched}"
             )
-        wheel_path = files_matched[0]
-        print("Found cached wheel for integration {}".format(integration))
-        shutil.move(wheel_path, target_dir)
-        found.append("datadog_{}".format(integration))
 
-    print("Found {} cached integration wheels".format(len(found)))
+        wheel_path = files_matched[0]
+        print(f"Found cached wheel for integration {integration}")
+        shutil.move(wheel_path, target_dir)
+        found.append(f"datadog_{integration}")
+
+    print(f"Found {len(found)} cached integration wheels")
     with open(os.path.join(target_dir, "found.txt"), "w") as f:
         f.write('\n'.join(found))
 
@@ -790,11 +792,12 @@ def upload_integration_to_cache(ctx, python, bucket, branch, integrations_dir, b
     matching_glob = os.path.join(build_dir, CACHED_WHEEL_FILENAME_PATTERN.format(integration=integration))
     files_matched = glob.glob(matching_glob)
     if len(files_matched) == 0:
-        raise Exit("No wheel for integration {} found in {}".format(integration, build_dir))
+        raise Exit(f"No wheel for integration {integration} found in {build_dir}")
     elif len(files_matched) > 1:
         raise Exit(
-            "More than 1 wheel for integration {} matched by {}: {}".format(integration, matching_glob, files_matched)
+            f"More than 1 wheel for integration {integration} matched by {matching_glob}: {files_matched}"
         )
+
 
     wheel_path = files_matched[0]
 
@@ -808,6 +811,8 @@ def upload_integration_to_cache(ctx, python, bucket, branch, integrations_dir, b
     target_name = CACHED_WHEEL_DIRECTORY_PATTERN.format(
         hash=hash, python_version=python, branch=branch
     ) + os.path.basename(wheel_path)
-    print("Caching wheel {}".format(target_name))
+    print(f"Caching wheel {target_name}")
     # NOTE: on Windows, the awscli is usually in program files, so we have the executable
-    ctx.run("\"{}\" s3 cp {} s3://{}/{} --acl public-read".format(awscli, wheel_path, bucket, target_name))
+    ctx.run(
+        f'\"{awscli}\" s3 cp {wheel_path} s3://{bucket}/{target_name} --acl public-read'
+    )

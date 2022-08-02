@@ -40,12 +40,9 @@ if __name__ == "__main__":
     parser.add_argument("--template", type=str, default="agent_expressions.md", help="template used for the generation")
     args = parser.parse_args()
 
-    secl_json_file = open(args.input)
-    json_top_node = json.load(secl_json_file)
-    secl_json_file.close()
-
+    with open(args.input) as secl_json_file:
+        json_top_node = json.load(secl_json_file)
     event_types = build_event_types(json_top_node)
 
-    output_file = open(args.output, "w")
-    print(common.fill_template(args.template, event_types=event_types), file=output_file)
-    output_file.close()
+    with open(args.output, "w") as output_file:
+        print(common.fill_template(args.template, event_types=event_types), file=output_file)

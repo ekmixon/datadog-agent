@@ -102,8 +102,10 @@ def build(
     if nikos_embedded_path:
         build_tags.append(DNF_TAG)
 
-    cmd = 'go build -mod={go_mod} {race_opt} {build_type} -tags "{go_build_tags}" '
-    cmd += '-o {agent_bin} -gcflags="{gcflags}" -ldflags="{ldflags}" {REPO_PATH}/cmd/system-probe'
+    cmd = (
+        'go build -mod={go_mod} {race_opt} {build_type} -tags "{go_build_tags}" '
+        + '-o {agent_bin} -gcflags="{gcflags}" -ldflags="{ldflags}" {REPO_PATH}/cmd/system-probe'
+    )
 
     args = {
         "go_mod": go_mod,
@@ -160,10 +162,11 @@ def test(
 
     args = {
         "build_tags": ",".join(build_tags),
-        "output_params": "-c -o " + output_path if output_path else "",
+        "output_params": f"-c -o {output_path}" if output_path else "",
         "pkgs": packages,
-        "run": "-run " + run if run else "",
+        "run": f"-run {run}" if run else "",
     }
+
 
     _, _, env = get_build_flags(ctx)
     env['DD_SYSTEM_PROBE_BPF_DIR'] = os.path.normpath(os.path.join(os.getcwd(), "pkg", "ebpf", "bytecode", "build"))
@@ -172,7 +175,7 @@ def test(
 
     cmd = 'go test -mod=mod -v -tags "{build_tags}" {output_params} {pkgs} {run}'
     if not windows and not output_path and not is_root():
-        cmd = 'sudo -E ' + cmd
+        cmd = f'sudo -E {cmd}'
 
     ctx.run(cmd.format(**args), env=env)
 
@@ -247,7 +250,7 @@ def kitchen_test(ctx, target=None, arch="x86_64"):
                 for image in by_provider["vagrant"][arch]:
                     images[image] = platform
 
-    if not (target in images):
+    if target not in images:
         print(
             "please run inv -e system-probe.kitchen-test --target <IMAGE>, where <IMAGE> is one of the following:\n%s"
             % (list(images.keys()))
@@ -313,9 +316,9 @@ def clang_format(ctx, targets=None, fix=False, fail_on_issue=False):
 
     fmt_cmd = "clang-format -i --style=file --fallback-style=none"
     if not fix:
-        fmt_cmd = fmt_cmd + " --dry-run"
+        fmt_cmd += " --dry-run"
     if fail_on_issue:
-        fmt_cmd = fmt_cmd + " --Werror"
+        fmt_cmd += " --Werror"
 
     ctx.run("{cmd} {files}".format(cmd=fmt_cmd, files=" ".join(targets)))
 
@@ -333,24 +336,23 @@ def clang_tidy(ctx, fix=False, fail_on_issue=False):
     build_flags.append("-DDEBUG=1")
 
     bpf_dir = os.path.join(".", "pkg", "ebpf")
-    base_files = glob.glob(bpf_dir + "/c/**/*.c")
+    base_files = glob.glob(f"{bpf_dir}/c/**/*.c")
 
     network_bpf_dir = os.path.join(".", "pkg", "network", "ebpf")
     network_c_dir = os.path.join(network_bpf_dir, "c")
     network_files = list(base_files)
-    network_files.extend(glob.glob(network_c_dir + "/**/*.c"))
+    network_files.extend(glob.glob(f"{network_c_dir}/**/*.c"))
     network_flags = list(build_flags)
-    network_flags.append("-I{}".format(network_c_dir))
-    network_flags.append("-I{}".format(os.path.join(network_c_dir, "prebuilt")))
-    network_flags.append("-I{}".format(os.path.join(network_c_dir, "runtime")))
+    network_flags.append(f"-I{network_c_dir}")
+    network_flags.append(f'-I{os.path.join(network_c_dir, "prebuilt")}')
+    network_flags.append(f'-I{os.path.join(network_c_dir, "runtime")}')
     run_tidy(ctx, files=network_files, build_flags=network_flags, fix=fix, fail_on_issue=fail_on_issue)
 
     security_agent_c_dir = os.path.join(".", "pkg", "security", "ebpf", "c")
     security_files = list(base_files)
-    security_files.extend(glob.glob(security_agent_c_dir + "/**/*.c"))
+    security_files.extend(glob.glob(f"{security_agent_c_dir}/**/*.c"))
     security_flags = list(build_flags)
-    security_flags.append("-I{}".format(security_agent_c_dir))
-    security_flags.append("-DUSE_SYSCALL_WRAPPER=0")
+    security_flags.extend((f"-I{security_agent_c_dir}", "-DUSE_SYSCALL_WRAPPER=0"))
     run_tidy(ctx, files=security_files, build_flags=security_flags, fix=fix, fail_on_issue=fail_on_issue)
 
 
@@ -395,16 +397,20 @@ def get_linux_header_dirs():
     debian_headers_dir = "/usr/src"
     linux_headers = []
     if os.path.isdir(centos_headers_dir):
-        for d in os.listdir(centos_headers_dir):
-            if os_info.release in d:
-                linux_headers.append(os.path.join(centos_headers_dir, d))
-    else:
-        for d in os.listdir(debian_headers_dir):
-            if d.startswith("linux-") and os_info.release in d:
-                linux_headers.append(os.path.join(debian_headers_dir, d))
+        linux_headers.extend(
+            os.path.join(centos_headers_dir, d)
+            for d in os.listdir(centos_headers_dir)
+            if os_info.release in d
+        )
 
-    # fallback to non-filtered version for Docker where `uname -r` is not correct
-    if len(linux_headers) == 0:
+    else:
+        linux_headers.extend(
+            os.path.join(debian_headers_dir, d)
+            for d in os.listdir(debian_headers_dir)
+            if d.startswith("linux-") and os_info.release in d
+        )
+
+    if not linux_headers:
         if os.path.isdir(centos_headers_dir):
             linux_headers = [os.path.join(centos_headers_dir, d) for d in os.listdir(centos_headers_dir)]
         else:
@@ -413,9 +419,9 @@ def get_linux_header_dirs():
             ]
 
     # fallback to the running kernel/build headers via /lib/modules/$(uname -r)/build/
-    if len(linux_headers) == 0:
+    if not linux_headers:
         uname_r = check_output('''uname -r''', shell=True).decode('utf-8').strip()
-        build_dir = "/lib/modules/{}/build".format(uname_r)
+        build_dir = f"/lib/modules/{uname_r}/build"
         if os.path.isdir(build_dir):
             linux_headers = [build_dir]
 
@@ -439,10 +445,11 @@ def get_linux_header_dirs():
         "include",
         "include/uapi",
         "include/generated/uapi",
-        "arch/{}/include".format(arch),
-        "arch/{}/include/uapi".format(arch),
-        "arch/{}/include/generated".format(arch),
+        f"arch/{arch}/include",
+        f"arch/{arch}/include/uapi",
+        f"arch/{arch}/include/generated",
     ]
+
 
     dirs = []
     for d in linux_headers:
@@ -467,17 +474,17 @@ def get_ebpf_build_flags():
         '-Wunused',
         '-Wall',
         '-Werror',
-        "-include {}".format(os.path.join(c_dir, "asm_goto_workaround.h")),
+        f'-include {os.path.join(c_dir, "asm_goto_workaround.h")}',
         '-O2',
         '-emit-llvm',
-        # Some linux distributions enable stack protector by default which is not available on eBPF
         '-fno-stack-protector',
         '-fno-color-diagnostics',
         '-fno-unwind-tables',
         '-fno-asynchronous-unwind-tables',
         '-fno-jump-tables',
-        "-I{}".format(c_dir),
+        f"-I{c_dir}",
     ]
+
 
     header_dirs = get_linux_header_dirs()
     for d in header_dirs:
@@ -487,15 +494,15 @@ def get_ebpf_build_flags():
 
 
 def build_network_ebpf_compile_file(ctx, parallel_build, build_dir, p, debug, network_prebuilt_dir, network_flags):
-    src_file = os.path.join(network_prebuilt_dir, "{}.c".format(p))
+    src_file = os.path.join(network_prebuilt_dir, f"{p}.c")
     if not debug:
-        bc_file = os.path.join(build_dir, "{}.bc".format(p))
+        bc_file = os.path.join(build_dir, f"{p}.bc")
         return ctx.run(
             CLANG_CMD.format(flags=" ".join(network_flags), bc_file=bc_file, c_file=src_file),
             asynchronous=parallel_build,
         )
     else:
-        debug_bc_file = os.path.join(build_dir, "{}-debug.bc".format(p))
+        debug_bc_file = os.path.join(build_dir, f"{p}-debug.bc")
         return ctx.run(
             CLANG_CMD.format(flags=" ".join(network_flags + ["-DDEBUG=1"]), bc_file=debug_bc_file, c_file=src_file),
             asynchronous=parallel_build,
@@ -504,15 +511,15 @@ def build_network_ebpf_compile_file(ctx, parallel_build, build_dir, p, debug, ne
 
 def build_network_ebpf_link_file(ctx, parallel_build, build_dir, p, debug, network_flags):
     if not debug:
-        bc_file = os.path.join(build_dir, "{}.bc".format(p))
-        obj_file = os.path.join(build_dir, "{}.o".format(p))
+        bc_file = os.path.join(build_dir, f"{p}.bc")
+        obj_file = os.path.join(build_dir, f"{p}.o")
         return ctx.run(
             LLC_CMD.format(flags=" ".join(network_flags), bc_file=bc_file, obj_file=obj_file),
             asynchronous=parallel_build,
         )
     else:
-        debug_bc_file = os.path.join(build_dir, "{}-debug.bc".format(p))
-        debug_obj_file = os.path.join(build_dir, "{}-debug.o".format(p))
+        debug_bc_file = os.path.join(build_dir, f"{p}-debug.bc")
+        debug_obj_file = os.path.join(build_dir, f"{p}-debug.o")
         return ctx.run(
             LLC_CMD.format(flags=" ".join(network_flags), bc_file=debug_bc_file, obj_file=debug_obj_file),
             asynchronous=parallel_build,
@@ -527,13 +534,11 @@ def build_network_ebpf_files(ctx, build_dir, parallel_build=True):
     compiled_programs = ["dns", "http", "offset-guess", "tracer"]
 
     network_flags = get_ebpf_build_flags()
-    network_flags.append("-I{}".format(network_c_dir))
+    network_flags.append(f"-I{network_c_dir}")
 
     flavor = []
     for prog in compiled_programs:
-        for debug in [False, True]:
-            flavor.append((prog, debug))
-
+        flavor.extend((prog, debug) for debug in [False, True])
     promises = []
     for p, debug in flavor:
         promises.append(
@@ -565,11 +570,10 @@ def build_security_ebpf_files(ctx, build_dir, parallel_build=True):
     security_agent_obj_file = os.path.join(build_dir, "runtime-security.o")
 
     security_flags = get_ebpf_build_flags()
-    security_flags.append("-I{}".format(security_agent_c_dir))
+    security_flags.append(f"-I{security_agent_c_dir}")
 
     # compile
-    promises = []
-    promises.append(
+    promises = [
         ctx.run(
             CLANG_CMD.format(
                 flags=" ".join(security_flags + ["-DUSE_SYSCALL_WRAPPER=0"]),
@@ -578,7 +582,8 @@ def build_security_ebpf_files(ctx, build_dir, parallel_build=True):
             ),
             asynchronous=parallel_build,
         )
-    )
+    ]
+
     security_agent_syscall_wrapper_bc_file = os.path.join(build_dir, "runtime-security-syscall-wrapper.bc")
     promises.append(
         ctx.run(
@@ -662,21 +667,16 @@ def generate_runtime_files(ctx):
 
 
 def replace_cgo_tag_absolute_path(file_path, absolute_path, relative_path):
-    # read
-    f = open(file_path)
-    lines = []
-    for line in f:
-        if line.startswith("// cgo -godefs"):
-            lines.append(line.replace(absolute_path, relative_path))
-        else:
-            lines.append(line)
-    f.close()
-
-    # write
-    f = open(file_path, "w")
-    res = "".join(lines)
-    f.write(res)
-    f.close()
+    with open(file_path) as f:
+        lines = []
+        for line in f:
+            if line.startswith("// cgo -godefs"):
+                lines.append(line.replace(absolute_path, relative_path))
+            else:
+                lines.append(line)
+    with open(file_path, "w") as f:
+        res = "".join(lines)
+        f.write(res)
 
 
 @task

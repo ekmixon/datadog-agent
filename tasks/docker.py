@@ -36,7 +36,9 @@ def integration_tests(ctx, skip_image_build=False, skip_build=False, python_comm
 
     print("Starting docker integration tests")
     env = {"DOCKER_IMAGE": DOGSTATSD_TAG}
-    ctx.run("{} ./test/integration/docker/dsd_listening.py".format(python_command), env=env)
+    ctx.run(
+        f"{python_command} ./test/integration/docker/dsd_listening.py", env=env
+    )
 
 
 @task
@@ -50,9 +52,9 @@ def dockerize_test(ctx, binary, skip_cleanup=False):
     client = docker.from_env()
     temp_folder = tempfile.mkdtemp(prefix="ddtest-")
 
-    ctx.run("cp %s %s/test.bin" % (binary, temp_folder))
+    ctx.run(f"cp {binary} {temp_folder}/test.bin")
 
-    with open("%s/Dockerfile" % temp_folder, 'w') as stream:
+    with open(f"{temp_folder}/Dockerfile", 'w') as stream:
         stream.write(
             """FROM docker/compose:debian-1.28.3
 ENV DOCKER_DD_AGENT=yes
@@ -63,7 +65,7 @@ COPY test.bin /test.bin
         )
         # Handle optional testdata folder
         if os.path.isdir("./testdata"):
-            ctx.run("cp -R testdata %s" % temp_folder)
+            ctx.run(f"cp -R testdata {temp_folder}")
             stream.write("COPY testdata /testdata")
 
     test_image, _ = client.images.build(path=temp_folder, rm=True)
@@ -73,15 +75,22 @@ COPY test.bin /test.bin
     test_container = client.containers.run(
         test_image.id,
         detach=True,
-        pid_mode="host",  # For origin detection
-        environment=["SCRATCH_VOLUME_NAME=" + scratch_volume.name, "SCRATCH_VOLUME_PATH=/tmp/scratch"],
+        pid_mode="host",
+        environment=[
+            f"SCRATCH_VOLUME_NAME={scratch_volume.name}",
+            "SCRATCH_VOLUME_PATH=/tmp/scratch",
+        ],
         volumes={
-            '/var/run/docker.sock': {'bind': '/var/run/docker.sock', 'mode': 'ro'},
+            '/var/run/docker.sock': {
+                'bind': '/var/run/docker.sock',
+                'mode': 'ro',
+            },
             '/proc': {'bind': '/host/proc', 'mode': 'ro'},
             '/sys/fs/cgroup': {'bind': '/host/sys/fs/cgroup', 'mode': 'ro'},
             scratch_volume.name: {'bind': '/tmp/scratch', 'mode': 'rw'},
         },
     )
+
 
     exit_code = test_container.wait()['StatusCode']
 
@@ -132,14 +141,17 @@ def pull_base_images(ctx, dockerfile, signed_pull=True):
             stages.add(words[3])
 
     if stages:
-        print("Ignoring intermediate stage names: {}".format(", ".join(stages)))
+        print(f'Ignoring intermediate stage names: {", ".join(stages)}')
         images -= stages
 
-    print("Pulling following base images: {} (content-trust:{})".format(", ".join(images), signed_pull))
+    print(
+        f'Pulling following base images: {", ".join(images)} (content-trust:{signed_pull})'
+    )
+
 
     pull_env = {}
     if signed_pull:
         pull_env["DOCKER_CONTENT_TRUST"] = "1"
 
     for i in images:
-        ctx.run("docker pull {}".format(i), env=pull_env)
+        ctx.run(f"docker pull {i}", env=pull_env)

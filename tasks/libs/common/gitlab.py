@@ -40,7 +40,7 @@ class Gitlab(RemoteAPI):
         if "name" in result:
             return
 
-        print("Cannot find GitLab project {}".format(self.project_name))
+        print(f"Cannot find GitLab project {self.project_name}")
         print("If you cannot see it in the GitLab WebUI, you likely need permission.")
         raise Exit(code=1)
 
@@ -70,12 +70,9 @@ class Gitlab(RemoteAPI):
         """
         page = 1
 
-        # Go through all pages
-        results = self.pipelines_for_ref(ref, sha=sha, page=page)
-        while results:
+        while results := self.pipelines_for_ref(ref, sha=sha, page=page):
             yield from results
             page += 1
-            results = self.pipelines_for_ref(ref, sha=sha, page=page)
 
     def pipelines_for_ref(self, ref, sha=None, page=1, per_page=100):
         """
@@ -85,7 +82,7 @@ class Gitlab(RemoteAPI):
             quote(self.project_name, safe=""), quote(ref, safe=""), per_page, page
         )
         if sha:
-            path = "{}&sha={}".format(path, sha)
+            path = f"{path}&sha={sha}"
         return self.make_request(path, json_output=True)
 
     def last_pipeline_for_ref(self, ref, per_page=100):
@@ -136,9 +133,7 @@ class Gitlab(RemoteAPI):
     def artifact(self, job_id, artifact_name):
         path = "/projects/{}/jobs/{}/artifacts/{}".format(quote(self.project_name, safe=""), job_id, artifact_name)
         response = self.make_request(path, stream_output=True)
-        if response.status_code != 200:
-            return None
-        return response
+        return None if response.status_code != 200 else response
 
     def all_jobs(self, pipeline_id):
         """
@@ -146,12 +141,9 @@ class Gitlab(RemoteAPI):
         """
         page = 1
 
-        # Go through all pages
-        results = self.jobs(pipeline_id, page)
-        while results:
+        while results := self.jobs(pipeline_id, page):
             yield from results
             page += 1
-            results = self.jobs(pipeline_id, page)
 
     def jobs(self, pipeline_id, page=1, per_page=100):
         """
@@ -169,12 +161,9 @@ class Gitlab(RemoteAPI):
         """
         page = 1
 
-        # Go through all pages
-        results = self.pipeline_schedules(page)
-        while results:
+        while results := self.pipeline_schedules(page):
             yield from results
             page += 1
-            results = self.pipeline_schedules(page)
 
     def pipeline_schedules(self, page=1, per_page=100):
         """
@@ -233,7 +222,7 @@ class Gitlab(RemoteAPI):
         # Gitlab API docs claim that this returns the JSON representation of the deleted schedule,
         # but it actually returns an empty string
         result = self.make_request(path, json_output=False, method="DELETE")
-        return "Pipeline schedule deleted; result: {}".format(result if result else "(empty)")
+        return f'Pipeline schedule deleted; result: {result or "(empty)"}'
 
     def create_pipeline_schedule_variable(self, schedule_id, key, value):
         """
@@ -307,7 +296,6 @@ def get_gitlab_token():
                     return output.strip()
             except subprocess.CalledProcessError:
                 print("GITLAB_TOKEN not found in keychain...")
-                pass
         print(
             "Please create an 'api' access token at "
             "https://gitlab.ddbuild.io/profile/personal_access_tokens and "
@@ -323,14 +311,20 @@ def get_gitlab_bot_token():
         print("GITLAB_BOT_TOKEN not found in env. Trying keychain...")
         if platform.system() == "Darwin":
             try:
-                output = subprocess.check_output(
-                    ['security', 'find-generic-password', '-a', os.environ["USER"], '-s', 'GITLAB_BOT_TOKEN', '-w']
-                )
-                if output:
+                if output := subprocess.check_output(
+                    [
+                        'security',
+                        'find-generic-password',
+                        '-a',
+                        os.environ["USER"],
+                        '-s',
+                        'GITLAB_BOT_TOKEN',
+                        '-w',
+                    ]
+                ):
                     return output.strip()
             except subprocess.CalledProcessError:
                 print("GITLAB_BOT_TOKEN not found in keychain...")
-                pass
         print(
             "Please make sure that the GITLAB_BOT_TOKEN is set or that " "the GITLAB_BOT_TOKEN keychain entry is set."
         )

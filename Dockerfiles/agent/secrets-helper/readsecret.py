@@ -12,11 +12,11 @@ def list_secret_names(input_json):
     query = json.loads(input_json)
     version = query["version"].split(".")
     if version[0] != "1":
-        raise ValueError("incompatible protocol version {}".format(query["version"]))
+        raise ValueError(f'incompatible protocol version {query["version"]}')
 
     names = query["secrets"]
     if type(names) is not list:
-        raise ValueError("the secrets field should be an array: {}".format(names))
+        raise ValueError(f"the secrets field should be an array: {names}")
 
     return names
 
@@ -26,7 +26,10 @@ def read_file(root_folder, filename):
     realpath = os.path.realpath(path)
 
     if not realpath.startswith(root_folder):
-        raise ValueError("file {} is outside of the specified folder {}".format(realpath, root_folder))
+        raise ValueError(
+            f"file {realpath} is outside of the specified folder {root_folder}"
+        )
+
 
     with open(realpath, "r") as f:
         return f.read(MAX_FILE_SIZE_BYTES)
@@ -34,7 +37,7 @@ def read_file(root_folder, filename):
 
 def is_valid_folder(arg):
     if not os.path.isdir(arg):
-        raise argparse.ArgumentTypeError('The folder {} does not exist'.format(arg))
+        raise argparse.ArgumentTypeError(f'The folder {arg} does not exist')
     else:
         return arg
 
@@ -64,7 +67,7 @@ if __name__ == '__main__':
     try:
         secret_names = list_secret_names(input_json)
     except ValueError as e:
-        sys.exit('Cannot parse input: ' + str(e))
+        sys.exit(f'Cannot parse input: {str(e)}')
 
     output = {}
     for s in secret_names:

@@ -29,12 +29,7 @@ def try_run(ctx, cmd, n):
     for _ in range(n):
         res = ctx.run(cmd, warn=True)
         if res.exited is None or res.exited > 0:
-            print(
-                color_message(
-                    "Failed to run \"{}\" - retrying".format(cmd),
-                    "orange",
-                )
-            )
+            print(color_message(f'Failed to run \"{cmd}\" - retrying', "orange"))
             continue
         return True
     return False
@@ -56,12 +51,9 @@ def build(ctx, vstudio_root=None, arch="x64", major_version='7', debug=False):
     verprops = " /p:MAJ_VER={build_maj} /p:MIN_VER={build_min} /p:PATCH_VER={build_patch} ".format(
         build_maj=build_maj, build_min=build_min, build_patch=build_patch
     )
-    print("arch is {}".format(arch))
+    print(f"arch is {arch}")
     cmd = ""
-    configuration = "Release"
-    if debug:
-        configuration = "Debug"
-
+    configuration = "Debug" if debug else "Release"
     if not os.getenv("VCINSTALLDIR"):
         print("VC Not installed in environment; checking other locations")
 
@@ -69,18 +61,16 @@ def build(ctx, vstudio_root=None, arch="x64", major_version='7', debug=False):
         if not vsroot:
             print("Must have visual studio installed")
             raise Exit(code=2)
-        batchfile = "vcvars64.bat"
-        if arch == "x86":
-            batchfile = "vcvars32.bat"
-        vs_env_bat = '{}\\VC\\Auxiliary\\Build\\{}'.format(vsroot, batchfile)
-        cmd = 'call \"{}\" && msbuild {}\\cal /p:Configuration={} /p:Platform={}'.format(
-            vs_env_bat, CUSTOM_ACTION_ROOT_DIR, configuration, arch
-        )
+        batchfile = "vcvars32.bat" if arch == "x86" else "vcvars64.bat"
+        vs_env_bat = f'{vsroot}\\VC\\Auxiliary\\Build\\{batchfile}'
+        cmd = f'call \"{vs_env_bat}\" && msbuild {CUSTOM_ACTION_ROOT_DIR}\\cal /p:Configuration={configuration} /p:Platform={arch}'
+
     else:
-        cmd = 'msbuild {}\\cal /p:Configuration={} /p:Platform={}'.format(CUSTOM_ACTION_ROOT_DIR, configuration, arch)
+        cmd = f'msbuild {CUSTOM_ACTION_ROOT_DIR}\\cal /p:Configuration={configuration} /p:Platform={arch}'
+
 
     cmd += verprops
-    print("Build Command: %s" % cmd)
+    print(f"Build Command: {cmd}")
 
     # Try to run the command 3 times to alleviate transient
     # network failures
@@ -90,20 +80,26 @@ def build(ctx, vstudio_root=None, arch="x64", major_version='7', debug=False):
 
     artefacts = [
         {"source": "customaction.dll", "target": "customaction.dll"},
-        {"source": "customaction.pdb", "target": "customaction-{}.pdb".format(package_version)},
-        {"source": "customaction-tests.exe", "target": "customaction-tests.exe"},
+        {
+            "source": "customaction.pdb",
+            "target": f"customaction-{package_version}.pdb",
+        },
+        {
+            "source": "customaction-tests.exe",
+            "target": "customaction-tests.exe",
+        },
     ]
+
     for artefact in artefacts:
         shutil.copy2(
-            "{}\\cal\\{}\\{}\\{}".format(CUSTOM_ACTION_ROOT_DIR, arch, configuration, artefact["source"]),
-            BIN_PATH + "\\{}".format(artefact["target"]),
+            f'{CUSTOM_ACTION_ROOT_DIR}\\cal\\{arch}\\{configuration}\\{artefact["source"]}',
+            BIN_PATH + f'\\{artefact["target"]}',
         )
 
 
 @task
 def clean(_, arch="x64", debug=False):
-    configuration = "Release"
-    if debug:
-        configuration = "Debug"
-
-    shutil.rmtree("{}\\cal\\{}\\{}".format(CUSTOM_ACTION_ROOT_DIR, arch, configuration), BIN_PATH)
+    configuration = "Debug" if debug else "Release"
+    shutil.rmtree(
+        f"{CUSTOM_ACTION_ROOT_DIR}\\cal\\{arch}\\{configuration}", BIN_PATH
+    )

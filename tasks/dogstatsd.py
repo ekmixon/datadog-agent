@@ -79,9 +79,11 @@ def build(
     if static:
         bin_path = STATIC_BIN_PATH
 
-    # NOTE: consider stripping symbols to reduce binary size
-    cmd = "go build -mod={go_mod} {race_opt} {build_type} -tags \"{build_tags}\" -o {bin_name} "
-    cmd += "-gcflags=\"{gcflags}\" -ldflags=\"{ldflags}\" {REPO_PATH}/cmd/dogstatsd"
+    cmd = (
+        "go build -mod={go_mod} {race_opt} {build_type} -tags \"{build_tags}\" -o {bin_name} "
+        + "-gcflags=\"{gcflags}\" -ldflags=\"{ldflags}\" {REPO_PATH}/cmd/dogstatsd"
+    )
+
     args = {
         "go_mod": go_mod,
         "race_opt": "-race" if race else "",
@@ -144,7 +146,7 @@ def run(ctx, rebuild=False, race=False, build_include=None, build_exclude=None, 
         build(ctx, rebuild=rebuild, race=race, build_include=build_include, build_exclude=build_exclude)
 
     target = os.path.join(DOGSTATSD_BIN_PATH, bin_name("dogstatsd"))
-    ctx.run("{} start".format(target))
+    ctx.run(f"{target} start")
 
 
 @task
@@ -182,11 +184,11 @@ def size_test(ctx, skip_build=False):
     size = stat_info.st_size / 1024
 
     if size > MAX_BINARY_SIZE:
-        print("DogStatsD static build size too big: {} kB".format(size))
+        print(f"DogStatsD static build size too big: {size} kB")
         print("This means your PR added big classes or dependencies in the packages dogstatsd uses")
         raise Exit(code=1)
 
-    print("DogStatsD static build size OK: {} kB".format(size))
+    print(f"DogStatsD static build size OK: {size} kB")
 
 
 @task
@@ -210,21 +212,16 @@ def omnibus_build(
     # omnibus config overrides
     overrides = []
 
-    # base dir (can be overridden through env vars, command line takes precedence)
-    base_dir = base_dir or os.environ.get("DSD_OMNIBUS_BASE_DIR")
-    if base_dir:
-        overrides.append("base_dir:{}".format(base_dir))
+    if base_dir := base_dir or os.environ.get("DSD_OMNIBUS_BASE_DIR"):
+        overrides.append(f"base_dir:{base_dir}")
 
-    overrides_cmd = ""
-    if overrides:
-        overrides_cmd = "--override=" + " ".join(overrides)
-
+    overrides_cmd = "--override=" + " ".join(overrides) if overrides else ""
     with ctx.cd("omnibus"):
         env = load_release_versions(ctx, release_version)
 
         cmd = "bundle install"
         if gem_path:
-            cmd += " --path {}".format(gem_path)
+            cmd += f" --path {gem_path}"
         ctx.run(cmd, env=env)
 
         omnibus = "bundle exec omnibus.bat" if sys.platform == 'win32' else "bundle exec omnibus"
@@ -244,9 +241,9 @@ def omnibus_build(
         )
         env['MAJOR_VERSION'] = major_version
 
-        integrations_core_version = os.environ.get('INTEGRATIONS_CORE_VERSION')
-        # Only overrides the env var if the value is a non-empty string.
-        if integrations_core_version:
+        if integrations_core_version := os.environ.get(
+            'INTEGRATIONS_CORE_VERSION'
+        ):
             env['INTEGRATIONS_CORE_VERSION'] = integrations_core_version
 
         # If the host has a GOMODCACHE set, try to reuse it
@@ -279,7 +276,10 @@ def integration_tests(ctx, install_deps=False, race=False, remote_docker=False, 
     # thinks that the parameters are for it to interpret.
     # we're calling an intermediate script which only pass the binary name to the invoke task.
     if remote_docker:
-        test_args["exec_opts"] = "-exec \"{}/test/integration/dockerize_tests.sh\"".format(os.getcwd())
+        test_args[
+            "exec_opts"
+        ] = f'-exec \"{os.getcwd()}/test/integration/dockerize_tests.sh\"'
+
 
     go_cmd = 'go test -mod={go_mod} {race_opt} -tags "{go_build_tags}" {exec_opts}'.format(**test_args)
 
@@ -288,7 +288,7 @@ def integration_tests(ctx, install_deps=False, race=False, remote_docker=False, 
     ]
 
     for prefix in prefixes:
-        ctx.run("{} {}".format(go_cmd, prefix))
+        ctx.run(f"{go_cmd} {prefix}")
 
 
 @task
@@ -306,17 +306,17 @@ def image_build(ctx, arch='amd64', skip_build=False):
     if not skip_build:
         build(ctx, rebuild=True, static=True)
     if not os.path.exists(src):
-        print("Could not find dogstatsd static binary at {} ".format(src))
+        print(f"Could not find dogstatsd static binary at {src} ")
         raise Exit(code=1)
     if not os.path.exists(dst):
         os.makedirs(dst)
 
     shutil.copy(src, dst)
     build_context = "Dockerfiles/dogstatsd/alpine"
-    dockerfile_path = "{}/Dockerfile".format(arch)
+    dockerfile_path = f"{arch}/Dockerfile"
 
     client.images.build(path=build_context, dockerfile=dockerfile_path, rm=True, tag=DOGSTATSD_TAG)
-    ctx.run("rm -rf {}/static".format(build_context))
+    ctx.run(f"rm -rf {build_context}/static")
 
 
 @task

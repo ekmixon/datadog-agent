@@ -3,6 +3,7 @@ Miscellaneous functions, no tasks here
 """
 
 
+
 import json
 import os
 import re
@@ -14,7 +15,7 @@ from invoke import task
 # constants
 ORG_PATH = "github.com/DataDog"
 DEFAULT_BRANCH = "main"
-REPO_PATH = "{}/datadog-agent".format(ORG_PATH)
+REPO_PATH = f"{ORG_PATH}/datadog-agent"
 ALLOWED_REPO_NON_NIGHTLY_BRANCHES = {"stable", "beta", "none"}
 ALLOWED_REPO_NIGHTLY_BRANCHES = {"nightly", "oldnightly"}
 ALLOWED_REPO_ALL_BRANCHES = ALLOWED_REPO_NON_NIGHTLY_BRANCHES.union(ALLOWED_REPO_NIGHTLY_BRANCHES)
@@ -37,19 +38,16 @@ def bin_name(name, android=False):
     Generate platform dependent names for binaries
     """
     if android:
-        return "{}.aar".format(name)
+        return f"{name}.aar"
 
-    if sys.platform == 'win32':
-        return "{}.exe".format(name)
-    return name
+    return f"{name}.exe" if sys.platform == 'win32' else name
 
 
 def get_gopath(ctx):
-    gopath = os.environ.get("GOPATH")
-    if not gopath:
-        gopath = ctx.run("go env GOPATH", hide=True).stdout.strip()
-
-    return gopath
+    return (
+        os.environ.get("GOPATH")
+        or ctx.run("go env GOPATH", hide=True).stdout.strip()
+    )
 
 
 def get_multi_python_location(embedded_path=None, rtloader_root=None):
@@ -60,10 +58,10 @@ def get_multi_python_location(embedded_path=None, rtloader_root=None):
             if os.path.exists(libpath):
                 rtloader_lib.append(libpath)
     else:  # if rtloader_root is specified we're working in dev mode from the rtloader folder
-        rtloader_lib.append("{}/rtloader".format(rtloader_root))
+        rtloader_lib.append(f"{rtloader_root}/rtloader")
 
-    rtloader_headers = "{}/include".format(rtloader_root or embedded_path)
-    rtloader_common_headers = "{}/common".format(rtloader_root or embedded_path)
+    rtloader_headers = f"{rtloader_root or embedded_path}/include"
+    rtloader_common_headers = f"{rtloader_root or embedded_path}/common"
 
     return rtloader_lib, rtloader_headers, rtloader_common_headers
 
@@ -102,9 +100,13 @@ def get_nikos_linker_flags(nikos_libs_path):
         'zstd',
     ]
     # hardcode the path to each library to ensure we link against the version which was built by omnibus-nikos
-    linker_flags = map(lambda lib: nikos_libs_path + '/lib' + lib + '.a', nikos_libs)
+    linker_flags = map(lambda lib: f'{nikos_libs_path}/lib{lib}.a', nikos_libs)
 
-    return ' -L' + nikos_libs_path + ' ' + ' '.join(linker_flags) + ' -static-libstdc++ -pthread -ldl -lm'
+    return (
+        f' -L{nikos_libs_path} '
+        + ' '.join(linker_flags)
+        + ' -static-libstdc++ -pthread -ldl -lm'
+    )
 
 
 def has_both_python(python_runtimes):
@@ -148,41 +150,59 @@ def get_build_flags(
 
     if embedded_path is None:
         # fall back to local dev path
-        embedded_path = "{}/src/github.com/DataDog/datadog-agent/dev".format(get_gopath(ctx))
+        embedded_path = f"{get_gopath(ctx)}/src/github.com/DataDog/datadog-agent/dev"
 
     rtloader_lib, rtloader_headers, rtloader_common_headers = get_multi_python_location(embedded_path, rtloader_root)
 
     # setting python homes in the code
     if python_home_2:
-        ldflags += "-X {}/pkg/collector/python.pythonHome2={} ".format(REPO_PATH, python_home_2)
+        ldflags += f"-X {REPO_PATH}/pkg/collector/python.pythonHome2={python_home_2} "
     if python_home_3:
-        ldflags += "-X {}/pkg/collector/python.pythonHome3={} ".format(REPO_PATH, python_home_3)
+        ldflags += f"-X {REPO_PATH}/pkg/collector/python.pythonHome3={python_home_3} "
 
     # If we're not building with both Python, we want to force the use of DefaultPython
     if not has_both_python(python_runtimes):
-        ldflags += "-X {}/pkg/config.ForceDefaultPython=true ".format(REPO_PATH)
+        ldflags += f"-X {REPO_PATH}/pkg/config.ForceDefaultPython=true "
 
-    ldflags += "-X {}/pkg/config.DefaultPython={} ".format(REPO_PATH, get_default_python(python_runtimes))
+    ldflags += f"-X {REPO_PATH}/pkg/config.DefaultPython={get_default_python(python_runtimes)} "
+
 
     # adding rtloader libs and headers to the env
     if rtloader_lib:
-        env['DYLD_LIBRARY_PATH'] = os.environ.get('DYLD_LIBRARY_PATH', '') + ":{}".format(':'.join(rtloader_lib))  # OSX
-        env['LD_LIBRARY_PATH'] = os.environ.get('LD_LIBRARY_PATH', '') + ":{}".format(':'.join(rtloader_lib))  # linux
-        env['CGO_LDFLAGS'] = os.environ.get('CGO_LDFLAGS', '') + " -L{}".format(' -L '.join(rtloader_lib))
-    env['CGO_CFLAGS'] = os.environ.get('CGO_CFLAGS', '') + " -Werror -Wno-deprecated-declarations -I{} -I{}".format(
-        rtloader_headers, rtloader_common_headers
+        env['DYLD_LIBRARY_PATH'] = (
+            os.environ.get('DYLD_LIBRARY_PATH', '')
+            + f":{':'.join(rtloader_lib)}"
+        )
+
+        env['LD_LIBRARY_PATH'] = (
+            os.environ.get('LD_LIBRARY_PATH', '')
+            + f":{':'.join(rtloader_lib)}"
+        )
+
+        env['CGO_LDFLAGS'] = (
+            os.environ.get('CGO_LDFLAGS', '')
+            + f" -L{' -L '.join(rtloader_lib)}"
+        )
+
+    env['CGO_CFLAGS'] = (
+        os.environ.get('CGO_CFLAGS', '')
+        + f" -Werror -Wno-deprecated-declarations -I{rtloader_headers} -I{rtloader_common_headers}"
     )
+
 
     # adding nikos libs to the env
     if nikos_embedded_path:
         env['PKG_CONFIG_PATH'] = env.get('PKG_CONFIG_PATH', '') + ':' + nikos_embedded_path + '/lib/pkgconfig'
-        env["CGO_LDFLAGS"] = env.get('CGO_LDFLAGS', '') + get_nikos_linker_flags(nikos_embedded_path + '/lib')
+        env["CGO_LDFLAGS"] = env.get(
+            'CGO_LDFLAGS', ''
+        ) + get_nikos_linker_flags(f'{nikos_embedded_path}/lib')
+
 
     # if `static` was passed ignore setting rpath, even if `embedded_path` was passed as well
     if static:
         ldflags += "-s -w -linkmode=external '-extldflags=-static' "
     elif rtloader_lib:
-        ldflags += "-r {} ".format(':'.join(rtloader_lib))
+        ldflags += f"-r {':'.join(rtloader_lib)} "
 
     if os.environ.get("DELVE"):
         gcflags = "all=-N -l"
@@ -218,7 +238,7 @@ def get_payload_version():
                     )
                 version = version_split[1].split("-")[0].strip()
                 if not re.search(r"^v\d+(\.\d+){2}$", version):
-                    raise Exception("Version of agent-payload in go.mod is invalid: '{}'".format(version))
+                    raise Exception(f"Version of agent-payload in go.mod is invalid: '{version}'")
                 return version
 
     raise Exception("Could not find valid version for agent-payload in go.mod file")
@@ -232,11 +252,20 @@ def get_version_ldflags(ctx, prefix=None, major_version='7'):
     payload_v = get_payload_version()
     commit = get_git_commit()
 
-    ldflags = "-X {}/pkg/version.Commit={} ".format(REPO_PATH, commit)
-    ldflags += "-X {}/pkg/version.AgentVersion={} ".format(
-        REPO_PATH, get_version(ctx, include_git=True, prefix=prefix, major_version=major_version)
+    ldflags = (
+        f"-X {REPO_PATH}/pkg/version.Commit={commit} "
+        + "-X {}/pkg/version.AgentVersion={} ".format(
+            REPO_PATH,
+            get_version(
+                ctx,
+                include_git=True,
+                prefix=prefix,
+                major_version=major_version,
+            ),
+        )
     )
-    ldflags += "-X {}/pkg/serializer.AgentPayloadVersion={} ".format(REPO_PATH, payload_v)
+
+    ldflags += f"-X {REPO_PATH}/pkg/serializer.AgentPayloadVersion={payload_v} "
 
     return ldflags
 
@@ -283,27 +312,26 @@ def query_version(ctx, git_sha_length=7, prefix=None, major_version_hint=None):
     # if the tag is 6.0.0-beta.0, it has been one commit since the tag and that commit hash is g4f19118
     cmd = "git describe --tags --candidates=50"
     if prefix and type(prefix) == str:
-        cmd += " --match \"{}-*\"".format(prefix)
+        cmd += f' --match \"{prefix}-*\"'
+    elif major_version_hint:
+        cmd += f' --match "{major_version_hint}\.*"'
     else:
-        if major_version_hint:
-            cmd += r' --match "{}\.*"'.format(major_version_hint)
-        else:
-            cmd += " --match \"[0-9]*\""
+        cmd += " --match \"[0-9]*\""
     if git_sha_length and type(git_sha_length) == int:
-        cmd += " --abbrev={}".format(git_sha_length)
+        cmd += f" --abbrev={git_sha_length}"
     described_version = ctx.run(cmd, hide=True).stdout.strip()
 
-    # for the example above, 6.0.0-beta.0-1-g4f19118, this will be 1
-    commit_number_match = re.match(r"^.*-(?P<commit_number>\d+)-g[0-9a-f]+$", described_version)
-    commit_number = 0
-    if commit_number_match:
-        commit_number = int(commit_number_match.group('commit_number'))
-
+    if commit_number_match := re.match(
+        r"^.*-(?P<commit_number>\d+)-g[0-9a-f]+$", described_version
+    ):
+        commit_number = int(commit_number_match['commit_number'])
+    else:
+        commit_number = 0
     version_re = r"v?(?P<version>\d+\.\d+\.\d+)(?:(?:-|\.)(?P<pre>[0-9A-Za-z.-]+))?"
     if prefix and type(prefix) == str:
-        version_re = r"^(?:{}-)?".format(prefix) + version_re
+        version_re = f"^(?:{prefix}-)?" + version_re
     else:
-        version_re = r"^" + version_re
+        version_re = f"^{version_re}"
     if commit_number == 0:
         version_re += r"(?P<git_sha>)$"
     else:
@@ -381,7 +409,7 @@ def load_release_versions(_, target_version):
             # windows runners don't accepts anything else than strings in the
             # environment when running a subprocess.
             return {str(k): str(v) for k, v in versions[target_version].items()}
-    raise Exception("Could not find '{}' version in release.json".format(target_version))
+    raise Exception(f"Could not find '{target_version}' version in release.json")
 
 
 @task()
@@ -425,8 +453,8 @@ def bundle_files(ctx, bindata_files, dir_prefix, go_dir, pkg, tag, split=True):
 def nightly_entry_for(agent_major_version):
     if agent_major_version == 6:
         return "nightly"
-    return "nightly-a{}".format(agent_major_version)
+    return f"nightly-a{agent_major_version}"
 
 
 def release_entry_for(agent_major_version):
-    return "release-a{}".format(agent_major_version)
+    return f"release-a{agent_major_version}"

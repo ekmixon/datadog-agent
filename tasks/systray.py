@@ -25,7 +25,7 @@ def build(ctx, rebuild=False, race=False, major_version='7', arch="x64", go_mod=
         inv systray.build
     """
 
-    if not sys.platform == 'win32':
+    if sys.platform != 'win32':
         print("Systray only available on Windows")
         return
 

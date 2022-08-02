@@ -257,15 +257,20 @@ class TestUpdateReleaseJsonEntry(unittest.TestCase):
                     "OMNIBUS_SOFTWARE_VERSION": str(omnibus_software_version),
                     "OMNIBUS_RUBY_VERSION": str(omnibus_ruby_version),
                     "JMXFETCH_VERSION": str(jmxfetch_version),
-                    "JMXFETCH_HASH": hashlib.sha256(MOCK_JMXFETCH_CONTENT).hexdigest(),
+                    "JMXFETCH_HASH": hashlib.sha256(
+                        MOCK_JMXFETCH_CONTENT
+                    ).hexdigest(),
                     "MACOS_BUILD_VERSION": str(macos_build_version),
-                    "WINDOWS_DDNPM_DRIVER": str(windows_ddnpm_driver),
-                    "WINDOWS_DDNPM_VERSION": str(windows_ddnpm_version),
-                    "WINDOWS_DDNPM_SHASUM": str(windows_ddnpm_shasum),
-                    "SECURITY_AGENT_POLICIES_VERSION": str(security_agent_policies_version),
+                    "WINDOWS_DDNPM_DRIVER": windows_ddnpm_driver,
+                    "WINDOWS_DDNPM_VERSION": windows_ddnpm_version,
+                    "WINDOWS_DDNPM_SHASUM": windows_ddnpm_shasum,
+                    "SECURITY_AGENT_POLICIES_VERSION": str(
+                        security_agent_policies_version
+                    ),
                 },
             }
         )
+
 
         self.assertDictEqual(release_json, expected_release_json)
 

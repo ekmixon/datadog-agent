@@ -36,4 +36,4 @@ def build(ctx, os="windows-10", provider="virtualbox-iso"):
         print("Error: unknown OS")
         raise Exit(code=1)
 
-    ctx.run("packer build --only=" + provider + " packer.json")
+    ctx.run(f"packer build --only={provider} packer.json")

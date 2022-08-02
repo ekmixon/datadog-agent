@@ -152,7 +152,7 @@ def get_series_from_query(q: dict):
             p[0] *= 1000
             points_list.append(p)
 
-    result = {
+    return {
         "status": "ok",
         "res_type": "time_series",
         "series": [
@@ -177,7 +177,6 @@ def get_series_from_query(q: dict):
         "query": q["query"],
         "message": "",
     }
-    return result
 
 
 @app.route("/api/v1/validate", methods=["GET"])
@@ -274,7 +273,7 @@ def logging():
 
 
 def stat_records():
-    j = dict()
+    j = {}
     for elt in payload_names:
         try:
             p = path.join(record_dir, elt)
@@ -303,18 +302,16 @@ def get_records(name):
     if path.isfile(path.join(record_dir, name)) is False:
         return Response(status=503)
 
-    payloads = list()
+    payloads = []
     with open(path.join(record_dir, name), 'r') as f:
-        for l in f:
-            payloads.append(json.loads(l))
+        payloads.extend(json.loads(l) for l in f)
     return json.dumps(payloads), 200
 
 
 @application.route('/', methods=['GET'])
 def api_mapper():
     rules = [k.rule for k in application.url_map.iter_rules()]
-    rules = list(set(rules))
-    rules.sort()
+    rules = sorted(set(rules))
     return jsonify(rules)
 
 

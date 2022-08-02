@@ -33,11 +33,11 @@ def get_value_of_param(ctx, param):
     invalidparms = j.get("InvalidParameters")
     paramkey = j.get("Parameter")
     if invalidparms:
-        print("Param is invalid {}".format(invalidparms))
+        print(f"Param is invalid {invalidparms}")
         return None
 
     val = paramkey.get("Value")
-    print("Length of paramkey {}".format(len(val)))
+    print(f"Length of paramkey {len(val)}")
     return val
 
 

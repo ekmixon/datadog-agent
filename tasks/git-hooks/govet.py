@@ -48,17 +48,20 @@ def is_go_file(path):
 
 # Exclude non go files
 # Get the package for each file
-targets = {"./" + os.path.dirname(path) for path in sys.argv[1:] if is_go_file(path)}
+targets = {
+    f"./{os.path.dirname(path)}" for path in sys.argv[1:] if is_go_file(path)
+}
+
 
 # Exclude list above
 targets = targets - EXCLUDED_FOLDERS
 
-if len(targets) == 0:
+if not targets:
     sys.exit()
 
 # Call invoke command
 # We do this workaround since we can't do relative imports
-cmd = "inv -e vet --targets='{}'".format(",".join(targets))
+cmd = f"""inv -e vet --targets='{",".join(targets)}'"""
 
 try:
     subprocess.run(cmd, shell=True, check=True)

@@ -32,11 +32,11 @@ EXPECTED_CHECKSUMS = {
 class TestFiles(unittest.TestCase):
     def test_files_present(self):
         for file in EXPECTED_PRESENT:
-            self.assertTrue(os.path.isfile(file), file + " should be present")
+            self.assertTrue(os.path.isfile(file), f"{file} should be present")
 
     def test_files_absent(self):
         for file in EXPECTED_ABSENT:
-            self.assertFalse(os.path.isfile(file), file + " should NOT be present")
+            self.assertFalse(os.path.isfile(file), f"{file} should NOT be present")
 
     def test_files_checksums(self):
         for file, digest in iteritems(EXPECTED_CHECKSUMS):
@@ -44,7 +44,7 @@ class TestFiles(unittest.TestCase):
             with open(file, "rb") as f:
                 for chunk in iter(lambda: f.read(4096), b""):
                     sha.update(chunk)
-            self.assertEqual(sha.hexdigest(), digest, file + " checksum mismatch")
+            self.assertEqual(sha.hexdigest(), digest, f"{file} checksum mismatch")
 
     def test_files_permissions(self):
         def has_write_permissions(path):

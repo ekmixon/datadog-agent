@@ -160,10 +160,7 @@ def _is_affirmative(s):
     if s is None:
         return False
     # int or real bool
-    if isinstance(s, int):
-        return bool(s)
-    # try string cast
-    return s.lower() in ('yes', 'true', '1')
+    return bool(s) if isinstance(s, int) else s.lower() in ('yes', 'true', '1')
 
 
 def get_config_path(cfg_path=""):
@@ -217,7 +214,7 @@ def get_histogram_percentiles(configstr=None):
                     raise ValueError
                 if len(val) > 4:
                     log.warning("Histogram percentiles are rounded to 2 digits: {0} rounded".format(floatval))
-                result.append(float(val[0:4]))
+                result.append(float(val[:4]))
             except ValueError:
                 log.warning("Bad histogram percentile value {0}, must be float in ]0;1[, skipping".format(val))
     except Exception:
@@ -230,7 +227,7 @@ def get_histogram_percentiles(configstr=None):
 def clean_dd_url(url):
     url = url.strip()
     if not url.startswith('http'):
-        url = 'https://' + url
+        url = f'https://{url}'
     return url[:-1] if url.endswith('/') else url
 
 

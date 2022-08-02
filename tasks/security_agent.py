@@ -115,9 +115,10 @@ def build(
         build="security-agent"
     )  # TODO/FIXME: Arch not passed to preserve build tags. Should this be fixed?
 
-    # TODO static option
-    cmd = 'go build -mod={go_mod} {race_opt} {build_type} -tags "{go_build_tags}" '
-    cmd += '-o {agent_bin} -gcflags="{gcflags}" -ldflags="{ldflags}" {REPO_PATH}/cmd/security-agent'
+    cmd = (
+        'go build -mod={go_mod} {race_opt} {build_type} -tags "{go_build_tags}" '
+        + '-o {agent_bin} -gcflags="{gcflags}" -ldflags="{ldflags}" {REPO_PATH}/cmd/security-agent'
+    )
 
     args = {
         "go_mod": go_mod,
@@ -162,7 +163,7 @@ def gen_mocks(ctx):
     interface_regex = "|".join(f"^{i}$" for i in interfaces)
 
     with ctx.cd("./pkg/compliance"):
-        ctx.run("mockery --case snake -r --name=\"{}\"".format(interface_regex))
+        ctx.run(f'mockery --case snake -r --name=\"{interface_regex}\"')
 
 
 @task
@@ -185,10 +186,9 @@ def build_go_syscall_tester(ctx, build_dir):
     syscall_tester_go_dir = os.path.join(".", "pkg", "security", "tests", "syscall_tester", "go")
     syscall_tester_exe_file = os.path.join(build_dir, "syscall_go_tester")
     ctx.run(
-        "go build -o {} -tags syscalltesters {}/syscall_go_tester.go ".format(
-            syscall_tester_exe_file, syscall_tester_go_dir
-        )
+        f"go build -o {syscall_tester_exe_file} -tags syscalltesters {syscall_tester_go_dir}/syscall_go_tester.go "
     )
+
     return syscall_tester_exe_file
 
 
@@ -260,16 +260,18 @@ def build_functional_tests(
     if arch == "x86":
         env["GOARCH"] = "386"
 
-    build_tags = "linux_bpf," + build_tags
+    build_tags = f"linux_bpf,{build_tags}"
     if bundle_ebpf:
-        build_tags = "ebpf_bindata," + build_tags
+        build_tags = f"ebpf_bindata,{build_tags}"
 
     if static:
         ldflags += '-extldflags "-static"'
         build_tags += ',osusergo,netgo'
 
-    cmd = 'go test -mod=mod -tags {build_tags} -ldflags="{ldflags}" -c -o {output} '
-    cmd += '{build_flags} {repo_path}/pkg/security/tests'
+    cmd = (
+        'go test -mod=mod -tags {build_tags} -ldflags="{ldflags}" -c -o {output} '
+        + '{build_flags} {repo_path}/pkg/security/tests'
+    )
 
     args = {
         "output": output,
@@ -445,8 +447,11 @@ RUN apt-get update -y \
     container_name = 'security-agent-tests'
     capabilities = ['SYS_ADMIN', 'SYS_RESOURCE', 'SYS_PTRACE', 'NET_ADMIN', 'IPC_LOCK', 'ALL']
 
-    cmd = 'docker run --name {container_name} {caps} --privileged -d --pid=host '
-    cmd += '-v /dev:/dev '
+    cmd = (
+        'docker run --name {container_name} {caps} --privileged -d --pid=host '
+        + '-v /dev:/dev '
+    )
+
     cmd += '-v /proc:/host/proc -e HOST_PROC=/host/proc '
     cmd += '-v {GOPATH}/src/{REPO_PATH}/pkg/security/tests:/tests {image_tag} sleep 3600'
 
@@ -454,9 +459,10 @@ RUN apt-get update -y \
         "GOPATH": get_gopath(ctx),
         "REPO_PATH": REPO_PATH,
         "container_name": container_name,
-        "caps": ' '.join(['--cap-add ' + cap for cap in capabilities]),
-        "image_tag": docker_image_tag_name + ":latest",
+        "caps": ' '.join([f'--cap-add {cap}' for cap in capabilities]),
+        "image_tag": f"{docker_image_tag_name}:latest",
     }
+
 
     ctx.run(cmd.format(**args))
 

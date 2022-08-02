@@ -235,8 +235,7 @@ def find_copyright_for(package, overrides, ctx):
         for line in lines:
             if not line.strip():
                 break
-        for line in lines:
-            yield line
+        yield from lines
 
     for filename in AUTHORS_LOCATIONS:
         filename = os.path.join(pkgdir, filename)
@@ -284,8 +283,7 @@ def find_copyright(ctx, licenses):
     overrides = read_overrides()
     for lic in licenses:
         pkg = lic['package']
-        cpy = find_copyright_for(pkg, overrides, ctx)
-        if cpy:
+        if cpy := find_copyright_for(pkg, overrides, ctx):
             lic['copyright'] = cpy
         else:
             lic['copyright'] = ['UNKNOWN']

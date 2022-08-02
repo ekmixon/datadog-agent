@@ -41,8 +41,11 @@ def build_common(
     # Generating go source from templates by running go generate on ./pkg/status
     generate(ctx)
 
-    cmd = "go build -mod={go_mod} {race_opt} {build_type} -tags '{build_tags}' -o {bin_name} "
-    cmd += "-gcflags=\"{gcflags}\" -ldflags=\"{ldflags}\" {REPO_PATH}/cmd/cluster-agent{suffix}"
+    cmd = (
+        "go build -mod={go_mod} {race_opt} {build_type} -tags '{build_tags}' -o {bin_name} "
+        + "-gcflags=\"{gcflags}\" -ldflags=\"{ldflags}\" {REPO_PATH}/cmd/cluster-agent{suffix}"
+    )
+
     args = {
         "go_mod": go_mod,
         "race_opt": "-race" if race else "",

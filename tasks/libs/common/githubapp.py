@@ -34,8 +34,7 @@ class GithubApp:
         # and encode it with the private key that's associated with the app.
         # See: https://docs.github.com/en/developers/apps/authenticating-with-github-apps#authenticating-as-a-github-app
         epoch = int(time.time())
-        payload = {'iat': epoch, 'exp': epoch + (5 * 60), 'iss': self.app_id}
-        return payload
+        return {'iat': epoch, 'exp': epoch + (5 * 60), 'iss': self.app_id}
 
     def get_headers(self):
         """
@@ -45,11 +44,10 @@ class GithubApp:
 
         token_payload = self.gen_token_payload()
         bearer_token = jwt.encode(token_payload, base64.b64decode(self.key_b64), algorithm='RS256').decode()
-        headers = {
-            'Authorization': 'Bearer {}'.format(bearer_token),
+        return {
+            'Authorization': f'Bearer {bearer_token}',
             'Accept': 'application/vnd.github.v3+json',
         }
-        return headers
 
     def make_request(self, endpoint, method='GET', data=None):
         """
@@ -79,10 +77,10 @@ class GithubApp:
         Get installation token for a Github App, which then allows to access
         the Github API with the permissions of this App.
         """
-        endpoint = '/app/installations/{}/access_tokens'.format(self.installation_id)
+        endpoint = f'/app/installations/{self.installation_id}/access_tokens'
         for _ in range(5):  # Retry up to 5 times
             r = self.make_request(endpoint, method='POST')
-            if r.status_code != 200 and r.status_code != 201:
+            if r.status_code not in [200, 201]:
                 logger.warning(
                     """Error in HTTP Request for access token.
                 Status code: {} Response Text: {}""".format(
@@ -110,7 +108,7 @@ class GithubApp:
         endpoint = '/app/installations'
         for _ in range(5):  # Retry up to 5 times
             r = self.make_request(endpoint, method='GET')
-            if r.status_code != 200 and r.status_code != 201:
+            if r.status_code not in [200, 201]:
                 logger.warning(
                     """Error in HTTP Request for installation id.
                 Status code: {} Response Text: {}""".format(

@@ -26,7 +26,7 @@ def split_junitxml(xml_path, codeowners, output_dir):
 
         owners = codeowners.of(path)
         if not owners:
-            raise KeyError("No code owner found for {}".format(path))
+            raise KeyError(f"No code owner found for {path}")
 
         main_owner = owners[0][1][len(CODEOWNERS_ORG_PREFIX) :]
         try:
@@ -37,7 +37,7 @@ def split_junitxml(xml_path, codeowners, output_dir):
         xml.getroot().append(suite)
 
     for owner, xml in output_xmls.items():
-        filepath = os.path.join(output_dir, owner + ".xml")
+        filepath = os.path.join(output_dir, f"{owner}.xml")
         xml.write(filepath, encoding="UTF-8", xml_declaration=True)
 
     return list(output_xmls)
@@ -59,7 +59,7 @@ def upload_junitxmls(output_dir, owners, additional_tags=None, job_url=""):
         ]
         if additional_tags:
             args.extend(additional_tags)
-        args.append(os.path.join(output_dir, owner + ".xml"))
+        args.append(os.path.join(output_dir, f"{owner}.xml"))
         processes.append(subprocess.Popen(DATADOG_CI_COMMAND + args, bufsize=-1, env=process_env))
     for process in processes:
         exit_code = process.wait()
@@ -88,7 +88,7 @@ def junit_upload_from_tgz(junit_tgz, codeowners_path=".github/CODEOWNERS"):
             job_url = jf.read()
 
         # for each unpacked xml file, split it and submit all parts
-        for xmlfile in glob.glob("{}/*.xml".format(unpack_dir)):
+        for xmlfile in glob.glob(f"{unpack_dir}/*.xml"):
             with tempfile.TemporaryDirectory() as output_dir:
                 written_owners = split_junitxml(xmlfile, codeowners, output_dir)
                 upload_junitxmls(output_dir, written_owners, tags, job_url)
@@ -120,7 +120,7 @@ def produce_junit_tar(files, result_path):
 
         tags_file = io.BytesIO()
         for k, v in tags.items():
-            tags_file.write("--tags {}:{} ".format(k, v).encode("UTF-8"))
+            tags_file.write(f"--tags {k}:{v} ".encode("UTF-8"))
         tags_info = tarfile.TarInfo(TAGS_FILE_NAME)
         tags_info.size = tags_file.getbuffer().nbytes
         tags_file.seek(0)

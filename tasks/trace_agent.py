@@ -60,8 +60,10 @@ def build(
 
     build_tags = get_build_tags(build_include, build_exclude)
 
-    cmd = "go build -mod={go_mod} {race_opt} {build_type} -tags \"{go_build_tags}\" "
-    cmd += "-o {agent_bin} -gcflags=\"{gcflags}\" -ldflags=\"{ldflags}\" {REPO_PATH}/cmd/trace-agent"
+    cmd = (
+        "go build -mod={go_mod} {race_opt} {build_type} -tags \"{go_build_tags}\" "
+        + "-o {agent_bin} -gcflags=\"{gcflags}\" -ldflags=\"{ldflags}\" {REPO_PATH}/cmd/trace-agent"
+    )
 
     args = {
         "go_mod": go_mod,
@@ -98,7 +100,10 @@ def integration_tests(ctx, install_deps=False, race=False, remote_docker=False, 
     # thinks that the parameters are for it to interpret.
     # we're calling an intermediate script which only pass the binary name to the invoke task.
     if remote_docker:
-        test_args["exec_opts"] = "-exec \"{}/test/integration/dockerize_tests.sh\"".format(os.getcwd())
+        test_args[
+            "exec_opts"
+        ] = f'-exec \"{os.getcwd()}/test/integration/dockerize_tests.sh\"'
+
 
     go_cmd = 'INTEGRATION=yes go test -mod={go_mod} {race_opt} -v'.format(**test_args)
 
@@ -107,7 +112,7 @@ def integration_tests(ctx, install_deps=False, race=False, remote_docker=False, 
     ]
 
     for prefix in prefixes:
-        ctx.run("{} {}".format(go_cmd, prefix))
+        ctx.run(f"{go_cmd} {prefix}")
 
 
 @task
@@ -119,7 +124,7 @@ def cross_compile(ctx, tag=""):
         print("Argument --tag=<version> is required.")
         return
 
-    print("Building tag %s..." % tag)
+    print(f"Building tag {tag}...")
 
     env = {
         "TRACE_AGENT_VERSION": tag,
@@ -144,4 +149,4 @@ def cross_compile(ctx, tag=""):
     )
     ctx.run("git checkout -")
 
-    print("Done! Binaries are located in ./bin/trace-agent/%s" % tag)
+    print(f"Done! Binaries are located in ./bin/trace-agent/{tag}")

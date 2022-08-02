@@ -95,9 +95,10 @@ def build(
     if sys.platform == 'win32' and "secrets" in build_tags:
         build_tags.remove("secrets")
 
-    # TODO static option
-    cmd = 'go build -mod={go_mod} {race_opt} {build_type} -tags "{go_build_tags}" '
-    cmd += '-o {agent_bin} -gcflags="{gcflags}" -ldflags="{ldflags}" {REPO_PATH}/cmd/process-agent'
+    cmd = (
+        'go build -mod={go_mod} {race_opt} {build_type} -tags "{go_build_tags}" '
+        + '-o {agent_bin} -gcflags="{gcflags}" -ldflags="{ldflags}" {REPO_PATH}/cmd/process-agent'
+    )
 
     args = {
         "go_mod": go_mod,
@@ -127,12 +128,27 @@ def build_dev_image(ctx, image=None, push=False, base_image="datadog/agent:lates
         raise Exit(message="image was not specified")
 
     with TempDir() as docker_context:
-        ctx.run("cp tools/ebpf/Dockerfiles/Dockerfile-process-agent-dev {to}".format(to=docker_context + "/Dockerfile"))
+        ctx.run(
+            "cp tools/ebpf/Dockerfiles/Dockerfile-process-agent-dev {to}".format(
+                to=f"{docker_context}/Dockerfile"
+            )
+        )
 
-        ctx.run("cp bin/process-agent/process-agent {to}".format(to=docker_context + "/process-agent"))
-        ctx.run("cp bin/system-probe/system-probe {to}".format(to=docker_context + "/system-probe"))
+
+        ctx.run(
+            "cp bin/process-agent/process-agent {to}".format(
+                to=f"{docker_context}/process-agent"
+            )
+        )
+
+        ctx.run(
+            "cp bin/system-probe/system-probe {to}".format(
+                to=f"{docker_context}/system-probe"
+            )
+        )
+
         if include_agent_binary:
-            ctx.run("cp bin/agent/agent {to}".format(to=docker_context + "/agent"))
+            ctx.run("cp bin/agent/agent {to}".format(to=f"{docker_context}/agent"))
             core_agent_dest = "/opt/datadog-agent/bin/agent/agent"
         else:
             # this is necessary so that the docker build doesn't fail while attempting to copy the agent binary

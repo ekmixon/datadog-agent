@@ -58,10 +58,8 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=str, help="output file")
     args = parser.parse_args()
 
-    json_schema_file = open(args.input)
-    json_top_node = json.load(json_schema_file)
-    json_schema_file.close()
-
+    with open(args.input) as json_schema_file:
+        json_top_node = json.load(json_schema_file)
     json_top_node = remove_schema_props(json_top_node)
 
     parameters = []
@@ -89,11 +87,10 @@ if __name__ == "__main__":
 
     presentable_json = presentable_top_node(json_top_node)
 
-    output_file = open(args.output, "w")
-    print(
-        common.fill_template(
-            "backend.md", event_schema=presentable_json, parameters=parameters, definitions=definitions
-        ),
-        file=output_file,
-    )
-    output_file.close()
+    with open(args.output, "w") as output_file:
+        print(
+            common.fill_template(
+                "backend.md", event_schema=presentable_json, parameters=parameters, definitions=definitions
+            ),
+            file=output_file,
+        )
